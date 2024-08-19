@@ -1,0 +1,322 @@
+<!DOCTYPE html>
+<html lang="zh">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>关键字检测（测试版）</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f4f4f4;
+            margin: 20px;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        }
+
+        h1 {
+            text-align: center;
+        }
+
+        .highlight {
+            color: red;
+            font-weight: bold;
+        }
+
+        .comment-green {
+            color: green;
+            font-style: italic;
+        }
+
+        .comment-red {
+            color: red;
+            font-style: italic;
+        }
+
+        #inputOutputContainer {
+            position: relative;
+            margin-top: 10px;
+        }
+
+        #inputOutputBox {
+            width: 100%;
+            height: auto;
+            box-sizing: border-box;
+            padding: 10px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            font-size: 16px;
+            background-color: #fff;
+            overflow-y: auto;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+        }
+
+        #inputOutputBox:focus {
+            border-color: #66afe9;
+            outline: none;
+        }
+
+        #status {
+            background-color: rgba(255, 255, 255, 0.8);
+            width: 180px;
+            margin-left: -10px;
+            padding: 5px 10px;
+            border-radius: 4px;
+            font-size: 24px;
+        }
+
+        #clearButton,
+        #addButton,
+        #removeButton {
+            background-color: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 15px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+            margin: 5px;
+            transition: background-color 0.3s;
+        }
+
+        #clearButton:hover,
+        #addButton:hover,
+        #removeButton:hover {
+            background-color: #0056b3;
+        }
+
+        #keywordList {
+            margin-bottom: 10px;
+            padding: 10px;
+            background-color: #e9ecef;
+            border-radius: 4px;
+            border: 1px solid #ccc;
+        }
+
+        #newKeyword {
+            padding: 10px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            font-size: 16px;
+            margin-right: 5px;
+            width: 200px;
+            transition: border-color 0.3s;
+        }
+
+        #newKeyword:focus {
+            border-color: #66afe9;
+            outline: none;
+        }
+
+        .button-group {
+            margin-top: 10px;
+            text-align: center;
+        }
+
+        #tips {
+            position: relative;
+            margin-left: 60%;
+            margin-top: -125px;
+            cursor: pointer;
+        }
+    </style>
+</head>
+
+<body>
+    <h1>关键字检测</h1>
+
+    <div id="keywordList">
+        <strong>当前关键词：</strong>
+        <span id="currentKeywords"></span>
+        <input type="text" id="newKeyword" placeholder="输入关键字...">
+        <button id="addButton" onclick="addKeyword()">添加</button>
+        <button id="removeButton" onclick="removeKeyword()">删除</button>
+
+        <div id="status">未检测到关键字</div>
+        <button id="clearButton" onclick="clearInput()">清空输入框</button>
+        <ol id="tips">
+            <li><b>添加按钮:</b>将输入框中的新关键字添加到关键字列表中。</li>
+            <li><b>删除按钮:</b>从关键字列表中删除输入框中指定的关键字。</li>
+            <li><b>清空输入框按钮：</b>清空输入框的文本并重置关键字检测状态。</li>
+            <li><b>文本输入框：</b>用户输入文本，实时检测高亮关键字。</li>
+            <li><b>状态文本：</b>显示当前关键字检测结果，告知用户是否检测到关键字。</li>
+            <li><b>关键词列表：</b>动态显示当前有效的关键字列表。</li>
+        </ol>
+    </div>
+
+    <div id="inputOutputContainer">
+        <div id="inputOutputBox" contenteditable="true" oninput="highlightKeywords()" onpaste="handlePaste(event)"></div>
+    </div>
+
+    <script>
+        // 初始关键词
+        let keywords = ["假设", "假定"];
+
+        // 初始化关键词列表的显示
+        updateKeywordList();
+
+        // 清空输入框
+        function clearInput() {
+            document.getElementById("inputOutputBox").innerHTML = ""; // 清空内容
+            document.getElementById("status").innerHTML = '<span style="color: green;">未检测到关键字</span>';
+        }
+
+        // 转义HTML函数
+        function escapeHTML(html) {
+            let div = document.createElement('div');
+            div.innerText = html;
+            return div.innerHTML;
+        }
+
+        // 移除多余双引号函数
+        function removeExtraQuotes(text) {
+            // 移除两端的双引号
+            text = text.replace(/^"+|"+$/g, '');
+            // 移除中间多余的双引号
+            text = text.replace(/""/g, '"');
+            return text;
+        }
+
+        function highlightKeywords() {
+            let inputText = document.getElementById("inputOutputBox").innerText;
+            inputText = inputText.replace(/"""/g, '"""'); // 确保处理连续的引号
+
+            let lines = inputText.split('\n');
+            let keywordFound = false;
+
+            let insideMultiLineComment = false;
+
+            let highlightedLines = lines.map(line => {
+                let escapedLine = escapeHTML(line);
+                // 更新正则表达式，确保注释符号后有空格
+                let regexSingleLineComment = /(.*?)(#|\/\/|--)(\s.*)/;
+                let regexMultiLineCommentStart = /(.*?)(\/\*|""")(.*)/;
+                let regexMultiLineCommentEnd = /(.*?)(\*\/|""")(.*)/;
+
+                if (insideMultiLineComment) {
+                    let endMatch = escapedLine.match(regexMultiLineCommentEnd);
+                    if (endMatch) {
+                        insideMultiLineComment = false;
+                        let commentPart = endMatch[0];
+                        let commentClass = /^[a-zA-Z0-9\s.,!?;:'"_\-()]*$/.test(commentPart) ? 'comment-red' : 'comment-green';
+                        return `<span class="${commentClass}">${commentPart}</span>`;
+                    } else {
+                        let commentClass = /^[a-zA-Z0-9\s.,!?;:'"_\-()]*$/.test(escapedLine) ? 'comment-red' : 'comment-green';
+                        return `<span class="${commentClass}">${escapedLine}</span>`;
+                    }
+                } else {
+                    let startMatch = escapedLine.match(regexMultiLineCommentStart);
+                    if (startMatch) {
+                        insideMultiLineComment = true;
+                        let codePart = startMatch[1];
+                        let commentPart = startMatch[0];
+                        let commentClass = /^[a-zA-Z0-9\s.,!?;:'"_\-()]*$/.test(commentPart) ? 'comment-red' : 'comment-green';
+
+                        // 处理代码部分，标红关键词
+                        keywords.forEach(function (keyword) {
+                            let keywordRegex = new RegExp(`(${keyword})`, "gi");
+                            if (keywordRegex.test(codePart)) {
+                                keywordFound = true;
+                                codePart = codePart.replace(keywordRegex, '<span class="highlight">\$1</span>'); // 去掉多余的反斜杠
+                            }
+                        });
+
+                        return codePart + `<span class="${commentClass}">${commentPart}</span>`;
+                    } else {
+                        let singleMatch = escapedLine.match(regexSingleLineComment);
+                        if (singleMatch) {
+                            let codePart = singleMatch[1];
+                            let commentPart = singleMatch[3];
+                            let commentClass = /^[a-zA-Z0-9\s.,!?;:'"_\-()]*$/.test(commentPart) ? 'comment-red' : 'comment-green';
+                            let fullComment = singleMatch[2] + commentPart;
+
+                            // 处理代码部分，标红关键词
+                            keywords.forEach(function (keyword) {
+                                let keywordRegex = new RegExp(`(${keyword})`, "gi");
+                                if (keywordRegex.test(codePart)) {
+                                    keywordFound = true;
+                                    codePart = codePart.replace(keywordRegex, '<span class="highlight">\$1</span>'); // 去掉多余的反斜杠
+                                }
+                            });
+
+                            return codePart + `<span class="${commentClass}">${fullComment}</span>`;
+                        } else {
+                            // 处理整个行的关键词高亮
+                            keywords.forEach(function (keyword) {
+                                let keywordRegex = new RegExp(`(${keyword})`, "gi");
+                                if (keywordRegex.test(escapedLine)) {
+                                    keywordFound = true;
+                                    escapedLine = escapedLine.replace(keywordRegex, '<span class="highlight">\$1</span>'); // 去掉多余的反斜杠
+                                }
+                            });
+
+                            return escapedLine;
+                        }
+                    }
+                }
+            }).join('<br>');
+
+            // 更新内容并保持光标位置
+            let inputOutputBox = document.getElementById("inputOutputBox");
+            inputOutputBox.innerHTML = highlightedLines;
+            setCaretToEnd(inputOutputBox);
+
+            // 更新状态文本
+            let status = document.getElementById("status");
+            if (keywordFound) {
+                status.innerHTML = '<strong style="color: red;">已检测到关键字</strong>';
+            } else {
+                status.innerHTML = '<span style="color: green;">未检测到关键字</span>';
+            }
+        }
+
+        function addKeyword() {
+            let newKeyword = document.getElementById("newKeyword").value.trim();
+            if (newKeyword && !keywords.includes(newKeyword)) {
+                keywords.push(newKeyword);
+                document.getElementById("newKeyword").value = "";
+                updateKeywordList();
+            }
+        }
+
+        function removeKeyword() {
+            let keywordToRemove = document.getElementById("newKeyword").value.trim();
+            if (keywordToRemove && keywords.includes(keywordToRemove)) {
+                keywords = keywords.filter(keyword => keyword !== keywordToRemove);
+                document.getElementById("newKeyword").value = "";
+                updateKeywordList();
+            }
+        }
+
+        function updateKeywordList() {
+            document.getElementById("currentKeywords").textContent = keywords.join(", ");
+            highlightKeywords();
+        }
+
+        function handlePaste(event) {
+            event.preventDefault();
+            let text = (event.clipboardData || window.clipboardData).getData('text/plain');
+            text = removeExtraQuotes(text); // 移除多余双引号
+            document.execCommand("insertHTML", false, escapeHTML(text).replace(/\n/g, '<br>'));
+        }
+
+        function setCaretToEnd(el) {
+            el.focus();
+            let range = document.createRange();
+            let sel = window.getSelection();
+            range.selectNodeContents(el);
+            range.collapse(false);
+            sel.removeAllRanges();
+            sel.addRange(range);
+        }
+
+        // 确保页面加载时输入框为空
+        document.addEventListener('DOMContentLoaded', function () {
+            clearInput(); // 清空输入框
+        });
+    </script>
+</body>
+
+</html>
