@@ -190,6 +190,7 @@
 
             let highlightedLines = lines.map(line => {
                 let escapedLine = escapeHTML(line);
+
                 // 更新正则表达式，确保注释符号后有空格
                 let regexSingleLineComment = /(.*?)(#|\/\/|--)(\s.*)/;
                 let regexMultiLineCommentStart = /(.*?)(\/\*|""")(.*)/;
@@ -199,60 +200,31 @@
                     let endMatch = escapedLine.match(regexMultiLineCommentEnd);
                     if (endMatch) {
                         insideMultiLineComment = false;
-                        let commentPart = endMatch[0];
-                        let commentClass = /^[a-zA-Z0-9\s.,!?;:'"_\-()]*$/.test(commentPart) ? 'comment-red' : 'comment-green';
-                        return `<span class="${commentClass}">${commentPart}</span>`;
+                        let beforeComment = endMatch[1];
+                        let commentPart = endMatch[2] + endMatch[3];
+                        commentPart = highlightKeywordsInText(commentPart); // 高亮注释中的关键字
+                        return beforeComment + `<span class="${getCommentClass(commentPart)}">${commentPart}</span>`;
                     } else {
-                        let commentClass = /^[a-zA-Z0-9\s.,!?;:'"_\-()]*$/.test(escapedLine) ? 'comment-red' : 'comment-green';
-                        return `<span class="${commentClass}">${escapedLine}</span>`;
+                        escapedLine = highlightKeywordsInText(escapedLine); // 高亮注释中的关键字
+                        return `<span class="${getCommentClass(escapedLine)}">${escapedLine}</span>`;
                     }
                 } else {
                     let startMatch = escapedLine.match(regexMultiLineCommentStart);
                     if (startMatch) {
                         insideMultiLineComment = true;
                         let codePart = startMatch[1];
-                        let commentPart = startMatch[0];
-                        let commentClass = /^[a-zA-Z0-9\s.,!?;:'"_\-()]*$/.test(commentPart) ? 'comment-red' : 'comment-green';
-
-                        // 处理代码部分，标红关键词
-                        keywords.forEach(function (keyword) {
-                            let keywordRegex = new RegExp(`(${keyword})`, "gi");
-                            if (keywordRegex.test(codePart)) {
-                                keywordFound = true;
-                                codePart = codePart.replace(keywordRegex, '<span class="highlight">\$1</span>'); // 去掉多余的反斜杠
-                            }
-                        });
-
-                        return codePart + `<span class="${commentClass}">${commentPart}</span>`;
+                        let commentPart = startMatch[2] + startMatch[3];
+                        commentPart = highlightKeywordsInText(commentPart); // 高亮注释中的关键字
+                        return codePart + `<span class="${getCommentClass(commentPart)}">${commentPart}</span>`;
                     } else {
                         let singleMatch = escapedLine.match(regexSingleLineComment);
                         if (singleMatch) {
                             let codePart = singleMatch[1];
-                            let commentPart = singleMatch[3];
-                            let commentClass = /^[a-zA-Z0-9\s.,!?;:'"_\-()]*$/.test(commentPart) ? 'comment-red' : 'comment-green';
-                            let fullComment = singleMatch[2] + commentPart;
-
-                            // 处理代码部分，标红关键词
-                            keywords.forEach(function (keyword) {
-                                let keywordRegex = new RegExp(`(${keyword})`, "gi");
-                                if (keywordRegex.test(codePart)) {
-                                    keywordFound = true;
-                                    codePart = codePart.replace(keywordRegex, '<span class="highlight">\$1</span>'); // 去掉多余的反斜杠
-                                }
-                            });
-
-                            return codePart + `<span class="${commentClass}">${fullComment}</span>`;
+                            let commentPart = singleMatch[2] + singleMatch[3];
+                            commentPart = highlightKeywordsInText(commentPart); // 高亮注释中的关键字
+                            return codePart + `<span class="${getCommentClass(commentPart)}">${commentPart}</span>`;
                         } else {
-                            // 处理整个行的关键词高亮
-                            keywords.forEach(function (keyword) {
-                                let keywordRegex = new RegExp(`(${keyword})`, "gi");
-                                if (keywordRegex.test(escapedLine)) {
-                                    keywordFound = true;
-                                    escapedLine = escapedLine.replace(keywordRegex, '<span class="highlight">\$1</span>'); // 去掉多余的反斜杠
-                                }
-                            });
-
-                            return escapedLine;
+                            return highlightKeywordsInText(escapedLine); // 高亮代码行中的关键字
                         }
                     }
                 }
@@ -269,6 +241,26 @@
                 status.innerHTML = '<strong style="color: red;">已检测到关键字</strong>';
             } else {
                 status.innerHTML = '<span style="color: green;">未检测到关键字</span>';
+            }
+
+            function highlightKeywordsInText(text) {
+                let lineContainsKeyword = false;
+                keywords.forEach(keyword => {
+                    let keywordRegex = new RegExp(`(${keyword})`, "gi");
+                    if (keywordRegex.test(text)) {
+                        lineContainsKeyword = true;
+                        text = text.replace(keywordRegex, '<span class="highlight">$1</span>');
+                    }
+                });
+                if (lineContainsKeyword) {
+                    keywordFound = true;
+                }
+                return text;
+            }
+
+            function getCommentClass(text) {
+                // 判断注释内容是否包含中文字符
+                return /[\u4e00-\u9fa5]/.test(text) ? 'comment-green' : 'comment-red';
             }
         }
 
